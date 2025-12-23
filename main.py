@@ -10,7 +10,6 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from fastapi import FastAPI, HTTPException,Body
 import io
-from google.ads.googleads.client import GoogleAdsClient
 from google.cloud import bigquery
 from google.oauth2 import service_account
 import pandas as pd
