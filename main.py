@@ -155,18 +155,23 @@ async def run_maintainance():
             print(f"{company}: New orders to insert: {len(new_missing_orders)}")
 
             if new_missing_orders:
-                rows_to_insert = [
-                    {"order_id": order_id, "company": company}
-                    for order_id in new_missing_orders
-                ]
+                # Use load_table_from_dataframe instead of insert_rows_json
+                df_to_insert = pd.DataFrame({
+                    "order_id": list(new_missing_orders),
+                    "company": company
+                })
 
                 table_id = "variant-finance-data-project.Sticky_Data.missing_orders"
-                errors = bq_client.insert_rows_json(table_id, rows_to_insert)
 
-                if errors:
-                    print(f"{company}: Errors inserting rows: {errors}")
-                else:
-                    print(f"{company}: Successfully inserted {len(rows_to_insert)} missing orders into BigQuery")
+                job_config = bigquery.LoadJobConfig(
+                    write_disposition=bigquery.WriteDisposition.WRITE_APPEND
+                )
+
+                job = bq_client.load_table_from_dataframe(df_to_insert, table_id, job_config=job_config)
+                job.result()
+
+                print(f"{company}: Successfully inserted {len(new_missing_orders)} missing orders")
+
             else:
                 print(f"{company}: All missing orders already exist in the table")
         else:
