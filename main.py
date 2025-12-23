@@ -96,7 +96,8 @@ async def run_maintainance():
     for info in sticky_info:
         
         company = info["company"]
-        query = f"SELECT DISTINCT order_id FROM variant-finance-data-project.Sticky_Data.{info["table"]} WHERE order_id IS NOT NULL;"
+        table = info["table"]
+        query = f"SELECT DISTINCT order_id FROM variant-finance-data-project.Sticky_Data.{table} WHERE order_id IS NOT NULL;"
         df = bq_client.query(query).to_dataframe()
 
         print(df.head())
