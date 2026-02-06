@@ -67,13 +67,6 @@ sticky_info = [
                 "start_time" : "00:00:00"
     },
     {
-                "company": "variantdiet",
-                "table": "Sticky_data_API_original_DT_Incremental",
-                "cred": "RGF0YWFwcHM6U2JGdDlHcEp2Z0REcw==",
-                "start_date" : "11/20/2025",
-                "start_time" : "00:00:00"
-    },
-    {
                 "company": "jobflowllc",
                 "table": "test_Sticky_data_API_original_JF_Incremental",
                 "cred": "RGF0YWFwcHM6SzZHV1lUQTdFcjIyc2Y=",
