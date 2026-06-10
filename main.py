@@ -171,7 +171,7 @@ async def run_maintainance():
             print(f"{company}: No missing orders to insert")
         
         await sticky_client.session.close()
-return {"status": "ok"}
+    return {"status": "ok"}
 
 if __name__ == "__main__":
     import uvicorn
