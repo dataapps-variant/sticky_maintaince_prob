@@ -10,5 +10,5 @@ COPY . .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Run the FastAPI app with Uvicorn
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Run the maintenance script (Cloud Run Job: runs to completion, then exits)
+CMD ["python", "main.py"]
