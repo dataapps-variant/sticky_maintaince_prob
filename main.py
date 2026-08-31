@@ -1,78 +1,38 @@
 import os
 import base64
+from sticky_auth import resolve_sticky_auth
 import json
 import asyncio
 from typing import List
 from google.cloud import bigquery
-from google.oauth2 import service_account
 import pandas as pd
 from datetime import timedelta, datetime
 from zoneinfo import ZoneInfo
 from stickyclient import StickyAPIClient
 
 # --- Configuration ---
-os.environ["GCP_PROJECT"] = "variant-finance-data-project"
-os.environ["BQ_DATASET"] = "Sticky_Data"
-os.environ["SERVICE_ACCOUNT_FILE"] = "./variant-finance-datebase-9fa2a65f1ff6.json"
+# Env vars are set in Cloud Run Job. Falls back to defaults for local runs.
+GCP_PROJECT = os.environ.get("GCP_PROJECT", "variant-finance-data-project")
+BQ_DATASET = os.environ.get("BQ_DATASET", "Sticky_Data")
 
-SERVICE_ACCOUNT_FILE = os.environ.get("SERVICE_ACCOUNT_FILE")
-GCP_PROJECT = os.environ.get("GCP_PROJECT")
-BQ_DATASET = os.environ.get("BQ_DATASET")
 
-SVC = "ewogICJ0eXBlIjogInNlcnZpY2VfYWNjb3VudCIsCiAgInByb2plY3RfaWQiOiAidmFyaWFudC1maW5hbmNlLWRhdGEtcHJvamVjdCIsCiAgInByaXZhdGVfa2V5X2lkIjogIjEwNjY5YjNmZGY0ZmU2MWJiNjJiMjE0MWFjY2M1YTA0NzI0NzhmNjgiLAogICJwcml2YXRlX2tleSI6ICItLS0tLUJFR0lOIFBSSVZBVEUgS0VZLS0tLS1cbk1JSUV2UUlCQURBTkJna3Foa2lHOXcwQkFRRUZBQVNDQktjd2dnU2pBZ0VBQW9JQkFRRHJ6TlRvK0dsNnZ2SldcbmdBZFlVczE0dmlVdUMzS0svc3cyd3NCWjVmTnlvK3JjTWY1NTlxM2JlWnR4R2toUllsUDRKYStxWXVqWVZoTDFcbmRMT09IbXVJb0JzN2ZKNWM0a2FXanVVRStYNWV4d3lvTjVycFNjYm82MUYyYmx4QzBrWllick51KytMYkUzcmZcbmk1QitKcGpkT052VkNHVnVLQk40eFFvaVc0WnJndXN1M2FlNmNkS0U4aS9SN0FDUitPb0dqTWg5dEI0WldFeXVcbmw0OGhEYkhKU0poOGRJaFhKRStteklLK1Q5d1Ntclc5dkNCZ2IyazhwNjdkdjFnWDFzMnJWQlZCR2xWUVdyUXRcbklxSzNySWJzRUxMMzF5OFhHazlpWldNM0oyMXI4aENsWDhBS0pHYkVkQ2pzUUJuNHhuai9Tei9RbXUvbXUvYnhcbm5CZEZiVjBGQWdNQkFBRUNnZ0VBRGdVNEhLRVdubnlIaXNLaWpTc2hPZjV1VmdKS3ZYNkFkSG9ZZDAvdnJYK1hcbkdhQWtYaXFmZEVjVENjTFREWG0vL2VkNXZqTVMzcmdoZVBSSEw5cFpzUDQ2R0V1azIrZDlaSHJiSGJSYkFmWXFcblo3OGtxQjNocEp4SFUvZ2tacm03Z29zVWdyTVo3a1pHZmsrOVYrN2lGSGRLeE93eW9iM2l5SUhJeERtMmNLSnpcbk1UTFBpZjZBVzBkV3NnZWhlS09pblg2THMvQXZYMUdPbVNtTVJ3RkNuVHF0K2Q4eE5JVm9JaGxmSER6RENPQWVcbmpNMitaazdXZHRiVmQ2QmxrSWliTjROYm1YU3hUSUFuemk0NTZJSG1VVVZtL09NdkR4OGhVR3Avc25YUUJtUXlcbmxvMFNOUEgyUHg1cXFoWU1rWmZ5R3pHcEdKcHpVcTdYaGxub1ZHQTVFUUtCZ1FEN2VtNGJYeUNUZDZWb3hXV2VcbjBhbEMyZlpUUUdwQU5rdmRBc0VxVWwxTS9iU3dycnBxa0pta3lnazRTdzZwSXN3WmxoOGVnVXRPY2JwbkJFSUVcbmNjSTJadHBNa2RtcUxkT1BzeG56TER1ZjVxa1MyMC9IcEpwVHduY0JxUnZpMmVXWEdablFGT0ZXK3UrZ0pqZ0ZcbnFoK1lDWUVTK3lXcFdVUVp5WitPaXhQZzhRS0JnUUR3Q2p2Mkk4VFpDblpRdlU2bncrSnpMeExYQjFPcStQSkRcbkRLV2lrd2pwTkt2ei9KOXNIc09FV1FyaXJUVHR5RzNEVEUwd3BNVnJUc0k2MC9hdjZCZnN4M09tZ0k1OEhlcHdcbkhxWW5GRWdSVFRJaHp3ZU1GZDkxb3BxcEtudUZUU3NqdjFWN2FhVzVZQ0dIVDhnVTJ6VC9tUmVIZmpvOGdrR2FcbkdkbVNjdDU5VlFLQmdRRHVoU0VLTlIvZ3Z3clVaT1lOelM2TmljNXBDQisrNThEc3owQUh0RGRxWHZpUzNDZFVcbkMvS3VxakkwZ254VlQvdm1DTTFiVWFicnNGTHNnczFiQ2NyN2JuSi9UWmIySXFFWEd2angvSEpSSjZZVmpJNE9cbi9jQ2kwVCt2QTRhL2s0eC8xSGhmTkc3RzRSdUcrcmtJSm1QeEFKSzhQaGxxbHBCUkpUdUJKOGlqQVFLQmdGanhcbnNkNDJ5czRSamwzRWg4eXFUTktaY3NXeXRWSDVCT3ZMVitTeHp1OTYwT3lMZ3hjeEh3bC9aUVV4WVJkcTJTRXdcbnVMbDVsSjE2aFlYKzNMMjVwb1BhTkFSU1JubS9MQXQzaitHVEpsRWk1WnlaZGhaMlZHTG1hYUNkV1QrL3BHaU9cbmtVSTFsMjdsTEFkVGpMUU50Y213RklQa1JmZjkzQWtaNHdEZEI0d3hBb0dBTlJ2QUZXMnpuTkdqTXBMZTFadVZcbmxTUjJzZk0yQTVlbzdLUTNjNTFOV2lMOENzK0FvcU1BeVVzVnBvZndDWGFJMlJxajVFVVFZRlV5SUl1RUJMb0Fcbmx6TlRET2RsdVhPTUNOUDV1Mk9LZmRhMWxBVmd6TFFqN1JNNWlyVjZ5TXBBL2tDKytRRGkyUVZRaFRUeDArWnRcbk45WDhQN3diY29QVWNPNXUrakM1R1RZPVxuLS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLVxuIiwKICAiY2xpZW50X2VtYWlsIjogInN0aWNreS1tYWludGFpbmVyQHZhcmlhbnQtZmluYW5jZS1kYXRhLXByb2plY3QuaWFtLmdzZXJ2aWNlYWNjb3VudC5jb20iLAogICJjbGllbnRfaWQiOiAiMTEwNTQxMzU4MjIzODQ3NjM5MjMyIiwKICAiYXV0aF91cmkiOiAiaHR0cHM6Ly9hY2NvdW50cy5nb29nbGUuY29tL28vb2F1dGgyL2F1dGgiLAogICJ0b2tlbl91cmkiOiAiaHR0cHM6Ly9vYXV0aDIuZ29vZ2xlYXBpcy5jb20vdG9rZW4iLAogICJhdXRoX3Byb3ZpZGVyX3g1MDlfY2VydF91cmwiOiAiaHR0cHM6Ly93d3cuZ29vZ2xlYXBpcy5jb20vb2F1dGgyL3YxL2NlcnRzIiwKICAiY2xpZW50X3g1MDlfY2VydF91cmwiOiAiaHR0cHM6Ly93d3cuZ29vZ2xlYXBpcy5jb20vcm9ib3QvdjEvbWV0YWRhdGEveDUwOS9zdGlja3ktbWFpbnRhaW5lciU0MHZhcmlhbnQtZmluYW5jZS1kYXRhLXByb2plY3QuaWFtLmdzZXJ2aWNlYWNjb3VudC5jb20iLAogICJ1bml2ZXJzZV9kb21haW4iOiAiZ29vZ2xlYXBpcy5jb20iCn0K"
-
+# Per-entity config. Credentials are fetched from Secret Manager at runtime
+# using the Entity code (see sticky_auth.py for the code->secret mapping).
 sticky_info = [
-    {
-        "company": "pdfdotnet",
-        "table": "Sticky_data_API_original_PD_Incremental",
-        "cred": "RGF0YWFwcHM6QWpBbWpIMkRQZk15bg==",
-        "start_date": "11/20/2025",
-        "start_time": "00:00:00"
-    },
-    {
-        "company": "mindworksllc",
-        "table": "Sticky_data_API_original_CT_Incremental",
-        "cred": "RGF0YWFwcHM6VlNVdjJ4Q1NFRHZlQVc=",
-        "start_date": "11/20/2025",
-        "start_time": "00:00:00"
-    },
-    {
-        "company": "brainable",
-        "table": "Sticky_data_API_original_AT_Incremental",
-        "cred": "RGF0YWFwcHM6VGNzTlNTWXhFcUc2ZQ==",
-        "start_date": "11/20/2025",
-        "start_time": "00:00:00"
-    },
-    {
-        "company": "contractsdotnetllc",
-        "table": "Sticky_data_API_original_CN_Incremental",
-        "cred": "RGF0YWFwcHM6YkhHVmo2ektranVQNGo=",
-        "start_date": "11/20/2025",
-        "start_time": "00:00:00"
-    },
-    {
-        "company": "formsourcellc",
-        "table": "Sticky_data_API_original_FS_Incremental",
-        "cred": "RGF0YWFwcHM6OW1CU2JVVG1jOXU0WlA=",
-        "start_date": "11/20/2025",
-        "start_time": "00:00:00"
-    },
-    {
-        "company": "jobflowllc",
-        "table": "test_Sticky_data_API_original_JF_Incremental",
-        "cred": "RGF0YWFwcHM6SzZHV1lUQTdFcjIyc2Y=",
-        "start_date": "11/12/2025",
-        "start_time": "00:00:00"
-    }
+    {"company": "pdfdotnet",          "Entity": "PD", "table": "Sticky_data_API_original_PD_Incremental",       "start_date": "11/20/2025", "start_time": "00:00:00"},
+    {"company": "mindworksllc",       "Entity": "CT", "table": "Sticky_data_API_original_CT_Incremental",       "start_date": "11/20/2025", "start_time": "00:00:00"},
+    {"company": "brainable",          "Entity": "AT", "table": "Sticky_data_API_original_AT_Incremental",       "start_date": "11/20/2025", "start_time": "00:00:00"},
+    {"company": "contractsdotnetllc", "Entity": "CN", "table": "Sticky_data_API_original_CN_Incremental",       "start_date": "11/20/2025", "start_time": "00:00:00"},
+    {"company": "formsourcellc",      "Entity": "FS", "table": "Sticky_data_API_original_FS_Incremental",       "start_date": "11/20/2025", "start_time": "00:00:00"},
+    {"company": "jobflowllc",         "Entity": "JF", "table": "test_Sticky_data_API_original_JF_Incremental",  "start_date": "11/12/2025", "start_time": "00:00:00"},
 ]
 
 
 async def run_maintainance():
     """Loads a list of dictionaries into a BigQuery table."""
 
-    service_account_info = json.loads(base64.b64decode(SVC).decode('utf-8'))
-    bq_credentials = service_account.Credentials.from_service_account_info(service_account_info)
-    bq_client = bigquery.Client(project=GCP_PROJECT, credentials=bq_credentials)
+    # Cloud Run Job uses Application Default Credentials automatically.
+    bq_client = bigquery.Client(project=GCP_PROJECT)
 
     for info in sticky_info:
 
@@ -87,7 +47,11 @@ async def run_maintainance():
         print(f"Total columns: {len(df.columns)}")
         print(f"Memory usage: {df.memory_usage(deep=True).sum() / 1024**2:.2f} MB")
 
-        sticky_client = StickyAPIClient(info["cred"], company)
+        # Fetch creds from Secret Manager for this entity, then re-encode as
+        # base64 "user:pass" for the existing StickyAPIClient interface.
+        user, pw = resolve_sticky_auth(entity=info["Entity"])
+        cred_b64 = base64.b64encode(f"{user}:{pw}".encode()).decode()
+        sticky_client = StickyAPIClient(cred_b64, company)
 
         end_datetime = datetime.now(ZoneInfo("America/New_York")) - timedelta(hours=3)
         end_date = end_datetime.strftime("%m/%d/%Y")
